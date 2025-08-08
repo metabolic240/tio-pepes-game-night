@@ -1,4 +1,5 @@
-// Tío Pepe's: Game Night! — per-finger colors, 0.25 blobs, winner-blob takeover, premium FX
+// Tío Pepe's: Game Night! — per-finger colors, 0.25 blobs, winner-blob takeover that shrinks,
+// premium FX, and losers shrink away. Winner blob stops pulsing once selected.
 
 const COUNTDOWN_START = 3;
 
@@ -160,8 +161,11 @@ function launchRays(x,y,color){
 function updateRays(){ for(const r of rays){ r.len+=36; r.alpha-=0.012; } rays = rays.filter(r=>r.alpha>0); }
 function drawRays(){
   ctx.save(); ctx.globalCompositeOperation="lighter";
-  for(const r of rays){ ctx.strokeStyle=rgba(r.color,Math.max(0,r.alpha)); ctx.lineWidth=8;
-    ctx.beginPath(); ctx.moveTo(r.x,r.y); ctx.lineTo(r.x+Math.cos(r.ang)*r.len, r.y+Math.sin(r.ang)*r.len); ctx.stroke(); }
+  for(const r of rays){
+    ctx.strokeStyle=rgba(r.color,Math.max(0,r.alpha)); ctx.lineWidth=8;
+    ctx.beginPath(); ctx.moveTo(r.x,r.y);
+    ctx.lineTo(r.x+Math.cos(r.ang)*r.len, r.y+Math.sin(r.ang)*r.len); ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -198,10 +202,7 @@ function launchSparkles(x,y,color){
   twinkles.length=0; const count=80;
   for(let i=0;i<count;i++){
     const ang = Math.random()*Math.PI*2, dist = 40 + Math.random()*160;
-    twinkles.push({
-      x: x + Math.cos(ang)*dist, y: y + Math.sin(ang)*dist,
-      size: 2 + Math.random()*3, phase: Math.random()*Math.PI*2, color
-    });
+    twinkles.push({ x: x + Math.cos(ang)*dist, y: y + Math.sin(ang)*dist, size: 2 + Math.random()*3, phase: Math.random()*Math.PI*2, color });
   }
 }
 function updateSparkles(){ for(const s of twinkles) s.phase += 0.15; }
@@ -220,10 +221,8 @@ function launchBokeh(color){
   orbs.length=0; const count=30;
   for(let i=0;i<count;i++){
     orbs.push({
-      x: Math.random()*window.innerWidth,
-      y: Math.random()*window.innerHeight,
-      r: 20 + Math.random()*40,
-      vx: (Math.random()*2-1)*0.6, vy: (Math.random()*2-1)*0.6,
+      x: Math.random()*window.innerWidth, y: Math.random()*window.innerHeight,
+      r: 20 + Math.random()*40, vx: (Math.random()*2-1)*0.6, vy: (Math.random()*2-1)*0.6,
       color, alpha: 0.18 + Math.random()*0.25
     });
   }
@@ -285,9 +284,8 @@ function pickWinner(){
   if (w) {
     victoryColor = w.color;
     winnerPos = { x: w.x, y: w.y };
-    winEffectType = WIN_EFFECTS[Math.floor(Math.random()*WIN_EFFECTS.length)];
+    winEffectType = ["confetti","ripples","rays","fireworks","spiral","sparkles","bokeh"][Math.floor(Math.random()*7)];
 
-    // Kick off premium FX
     if (winEffectType==="confetti")      launchConfetti(w.x,w.y,w.color);
     else if (winEffectType==="ripples")  triggerRipples(w.x,w.y,w.color);
     else if (winEffectType==="rays")     launchRays(w.x,w.y,w.color);
@@ -296,10 +294,9 @@ function pickWinner(){
     else if (winEffectType==="sparkles") launchSparkles(w.x,w.y,w.color);
     else if (winEffectType==="bokeh")    launchBokeh(w.color);
 
-    // Winner blob grows into takeover circle
-    // Start near the winner's current blob size; growth handled in render()
+    // Winner takeover starts around base blob size
     const minDim = Math.min(window.innerWidth, window.innerHeight);
-    winnerGrowR = minDim * 0.25; // begin at base blob size
+    winnerGrowR = minDim * 0.25;
   }
 
   replayBtn.style.display = "block";
@@ -328,43 +325,51 @@ function render(){
   const now = performance.now();
   const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.25;
 
-  // Draw blobs (with shrink for losers)
+  // Draw blobs
   for (const [id, t] of touches.entries()) {
-    if (winnerId !== null && String(id)!==String(winnerId)) {
+    const isWinner = (winnerId !== null && String(id)===String(winnerId));
+
+    // 1) Shrink losers after win
+    if (winnerId !== null && !isWinner) {
       t.shrink = Math.max(0, (t.shrink ?? 1) - 0.06);
     } else {
       t.shrink = Math.min(1, (t.shrink ?? 1) + 0.1);
     }
 
-    const pulse = (Math.sin((now - t.born)/200)+1)*0.5;
-    let r = baseRadius * (0.9 + 0.08 * pulse) * (t.shrink ?? 1);
-
-    // Winner blob gets a subtle extra growth while takeover happens
-    if (winnerId !== null && String(id)===String(winnerId)) r *= 1.08;
+    // 2) Radius: winners stop breathing; losers still pulse while visible
+    let r;
+    if (isWinner) {
+      // Winner blob SHRINKS as the screen fill grows (progress 0..1)
+      const progress = Math.min(winnerGrowR / Math.max(1, winnerGrowTarget), 1);
+      const winnerScale = Math.max(0.18, 1 - progress); // shrinks to ~18% at full fill
+      r = baseRadius * 0.95 * winnerScale * (t.shrink ?? 1);
+    } else {
+      // Losers keep gentle pulse until they vanish
+      const pulse = (Math.sin((now - t.born)/200)+1)*0.5;
+      r = baseRadius * (0.9 + 0.08 * pulse) * (t.shrink ?? 1);
+    }
 
     if (r > 0.5) {
       drawBlob(t.x, t.y, r, t.color, t.color);
-      if (String(id)===String(winnerId)) drawGlowRing(t.x, t.y, r + 12, t.color, 0.9);
+      if (isWinner) drawGlowRing(t.x, t.y, r + 12, t.color, 0.9);
     }
   }
 
   // Winner takeover: expanding circle fill from winner position
   if (winnerId !== null && winnerGrowR < winnerGrowTarget) {
-    // ease towards target
-    winnerGrowR += (winnerGrowTarget - winnerGrowR) * winnerGrowSpeed;
+    winnerGrowR += (winnerGrowTarget - winnerGrowR) * winnerGrowSpeed; // ease
     ctx.save();
-    ctx.fillStyle = rgba(victoryColor, 0.88); // strong but see-through for FX
+    ctx.fillStyle = rgba(victoryColor, 0.88);
     ctx.beginPath();
     ctx.arc(winnerPos.x, winnerPos.y, winnerGrowR, 0, Math.PI*2);
     ctx.fill();
     ctx.restore();
   } else if (winnerId !== null) {
-    // hold full-screen color once filled
     ctx.fillStyle = rgba(victoryColor, 0.88);
     ctx.fillRect(0,0,canvas.width,canvas.height);
   }
 
-  // Premium FX (draw above the color fill)
+  // Premium FX over the fill
   if (winnerId !== null) {
     if (winEffectType==="confetti")      { updateConfetti();   drawConfetti(); }
     else if (winEffectType==="ripples")  { updateRipples();    drawRipples();  }
