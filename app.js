@@ -8,6 +8,12 @@ const countdownEl = document.getElementById("countdown");
 const replayBtn   = document.getElementById("replayBtn");
 const hint        = document.getElementById("hint");
 
+// Hide splash on first touch so canvas can receive events
+splash.addEventListener("touchstart", e => {
+  splash.style.display = "none";
+  e.preventDefault();
+}, { passive: false });
+
 // State
 let touches        = new Map();      // touchId → { x, y }
 let roundState     = "idle";         // "idle" | "countdown" | "won"
@@ -87,7 +93,7 @@ function startCountdown() {
   }, 1000);
 }
 
-// Random winner & start wipe
+// Pick a random winner
 function pickWinner() {
   const ids = Array.from(touches.keys());
   if (!ids.length) return resetRound();
@@ -98,7 +104,7 @@ function pickWinner() {
   playWinSound();
 }
 
-// Reset everything for next round
+// Reset for next round
 function resetRound() {
   touches.clear();
   winnerId    = null;
@@ -111,11 +117,6 @@ function resetRound() {
 
 // Touch handlers
 canvas.addEventListener("touchstart", e => {
-  // First touch hides splash
-  if (splash.style.display !== "none") {
-    splash.style.display = "none";
-    return;
-  }
   if (roundState !== "idle") return;
 
   initAudio();
