@@ -41,7 +41,7 @@ let winEffectType = "confetti";
 let victoryColor = "#ffffff";
 let winnerGrowR = 0;                 // expanding circle radius (from winner point)
 let winnerGrowTarget = 0;            // target = hypot(screen)
-let winnerGrowSpeed = 0.14;          // easing factor per frame
+let winnerGrowSpeed = 0.10;          // easing factor per frame
 let winnerPos = { x: 0, y: 0 };
 
 const canvas = document.getElementById("gameCanvas");
@@ -323,7 +323,7 @@ function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   const now = performance.now();
-  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.25;
+  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.15; 
 
   // Draw blobs
   for (const [id, t] of touches.entries()) {
