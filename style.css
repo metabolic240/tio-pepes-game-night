@@ -18,6 +18,8 @@ html, body {
   inset: 0;
   background: url('images/splash.png') center/cover no-repeat;
   z-index: 10;
+  touch-action: none;          /* prevent drag/scroll on splash */
+  -webkit-user-select: none;   /* disable text selection */
 }
 
 /* Full-screen canvas */
