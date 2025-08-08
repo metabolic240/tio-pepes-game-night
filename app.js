@@ -1,5 +1,5 @@
-// Tío Pepe's: Game Night! — per-finger colors, 0.25 blobs, winner-blob takeover that shrinks,
-// premium FX, and losers shrink away. Winner blob stops pulsing once selected.
+// Tío Pepe's: Game Night! — per-finger colors, smaller blobs (0.15), winner-blob shrinks,
+// ease-in winner color takeover, premium FX, losers shrink away, + procedural audio SFX.
 
 const COUNTDOWN_START = 3;
 
@@ -37,12 +37,57 @@ let twinkles = []; // sparkles
 let orbs = [];     // bokeh
 let winEffectType = "confetti";
 
-// Winner takeover state
+// Winner takeover state (time-based, ease-in)
 let victoryColor = "#ffffff";
-let winnerGrowR = 0;                 // expanding circle radius (from winner point)
-let winnerGrowTarget = 0;            // target = hypot(screen)
-let winnerGrowSpeed = 0.10;          // easing factor per frame
+let winnerGrowT = 0;                // 0..1 progress for the wipe
+let winnerGrowDuration = 1.2;       // seconds for full wipe (slightly slower/dramatic)
 let winnerPos = { x: 0, y: 0 };
+let winnerStartTime = 0;            // timestamp when win triggered
+
+// --- Procedural Audio (no files) ---
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } else if (audioCtx.state === "suspended") {
+    audioCtx.resume();
+  }
+}
+function beep({freq=440, type="sine", dur=0.18, gain=0.12}) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function noiseBurst({dur=0.25, gain=0.08, lp=1800}) {
+  if (!audioCtx) return;
+  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1)*0.9;
+  const src = audioCtx.createBufferSource(); src.buffer = buffer;
+  const g = audioCtx.createGain(); g.gain.value = gain;
+  const filter = audioCtx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = lp;
+  src.connect(filter).connect(g).connect(audioCtx.destination);
+  src.start(); src.stop(audioCtx.currentTime + dur);
+}
+function chord({root=440, ratio=[1, 5/4, 3/2], type="triangle", dur=0.4, gain=0.08}) {
+  if (!audioCtx) return;
+  const g = audioCtx.createGain();
+  g.gain.setValueAtTime(gain, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+  g.connect(audioCtx.destination);
+  ratio.forEach(r => {
+    const o = audioCtx.createOscillator();
+    o.type = type; o.frequency.value = root * r;
+    o.connect(g); o.start(); o.stop(audioCtx.currentTime + dur);
+  });
+}
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
@@ -56,9 +101,9 @@ function resize() {
   canvas.style.width = w + "px"; canvas.style.height = h + "px";
   canvas.width = Math.floor(w * dpr); canvas.height = Math.floor(h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  winnerGrowTarget = Math.hypot(w, h); // biggest circle to fill screen
 }
-window.addEventListener("resize", resize); resize();
+window.addEventListener("resize", resize);
+resize();
 
 function pickRandomTheme() {
   currentTheme = themes[Math.floor(Math.random() * themes.length)];
@@ -68,6 +113,7 @@ function pickRandomTheme() {
 
 // Touch handling
 canvas.addEventListener("touchstart", (e) => {
+  initAudio(); // unlock audio on first touch
   e.preventDefault();
   for (const t of e.changedTouches) {
     touches.set(t.identifier, {
@@ -245,7 +291,7 @@ function startCountdown(){
   // Reset FX + takeover + shrink
   confetti.length = sparks.length = rays.length = spiral.length = 0;
   twinkles.length = orbs.length = 0; ripples.length = 0;
-  winnerId = null; winnerGrowR = 0; winnerPos = {x:0,y:0};
+  winnerId = null; winnerGrowT = 0; winnerPos = {x:0,y:0}; winnerStartTime = 0;
 
   for (const [, t] of touches) t.shrink = 1;
 
@@ -284,7 +330,7 @@ function pickWinner(){
   if (w) {
     victoryColor = w.color;
     winnerPos = { x: w.x, y: w.y };
-    winEffectType = ["confetti","ripples","rays","fireworks","spiral","sparkles","bokeh"][Math.floor(Math.random()*7)];
+    winEffectType = WIN_EFFECTS[Math.floor(Math.random()*WIN_EFFECTS.length)];
 
     if (winEffectType==="confetti")      launchConfetti(w.x,w.y,w.color);
     else if (winEffectType==="ripples")  triggerRipples(w.x,w.y,w.color);
@@ -294,9 +340,25 @@ function pickWinner(){
     else if (winEffectType==="sparkles") launchSparkles(w.x,w.y,w.color);
     else if (winEffectType==="bokeh")    launchBokeh(w.color);
 
-    // Winner takeover starts around base blob size
-    const minDim = Math.min(window.innerWidth, window.innerHeight);
-    winnerGrowR = minDim * 0.25;
+    // Start the wipe timing
+    winnerGrowT = 0;
+    winnerStartTime = performance.now();
+
+    // --- Winner sound (procedural) ---
+    if (audioCtx) {
+      if (winEffectType === "confetti" || winEffectType === "rays") {
+        beep({freq: 880, type: "square", dur: 0.09, gain: 0.08});
+        setTimeout(()=>beep({freq: 1320, type: "square", dur: 0.09, gain: 0.07}), 90);
+      } else if (winEffectType === "fireworks" || winEffectType === "spiral") {
+        chord({root: 523.25, ratio:[1, 5/4, 3/2], type:"triangle", dur:0.35, gain:0.09});
+      } else if (winEffectType === "ripples" || winEffectType === "bokeh") {
+        noiseBurst({dur: 0.28, gain: 0.06, lp: 1400});
+      } else {
+        beep({freq: 1046.5, type:"sine", dur:0.07, gain:0.07});
+        setTimeout(()=>beep({freq: 1244.5, type:"sine", dur:0.07, gain:0.06}), 80);
+        setTimeout(()=>beep({freq: 1568.0, type:"sine", dur:0.1,  gain:0.06}), 160);
+      }
+    }
   }
 
   replayBtn.style.display = "block";
@@ -307,7 +369,7 @@ function startRound(){
   countdownEl.style.display = "none";
   hint.style.display = "block";
   pickRandomTheme();
-  winnerId = null; winnerGrowR = 0; twinkles.length=orbs.length=0;
+  winnerId = null; winnerGrowT = 0; twinkles.length=orbs.length=0;
   if (touches.size > 0) startCountdown();
 }
 
@@ -323,25 +385,26 @@ function render(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
 
   const now = performance.now();
-  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.15; 
+  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.15; // smaller starting blobs
 
   // Draw blobs
   for (const [id, t] of touches.entries()) {
     const isWinner = (winnerId !== null && String(id)===String(winnerId));
 
-    // 1) Shrink losers after win
+    // Shrink losers after win; winner stays at 1 then shrinks via wipe progress
     if (winnerId !== null && !isWinner) {
       t.shrink = Math.max(0, (t.shrink ?? 1) - 0.06);
     } else {
       t.shrink = Math.min(1, (t.shrink ?? 1) + 0.1);
     }
 
-    // 2) Radius: winners stop breathing; losers still pulse while visible
+    // Radius: winners stop breathing and shrink based on wipe progress
     let r;
     if (isWinner) {
-      // Winner blob SHRINKS as the screen fill grows (progress 0..1)
-      const progress = Math.min(winnerGrowR / Math.max(1, winnerGrowTarget), 1);
-      const winnerScale = Math.max(0.18, 1 - progress); // shrinks to ~18% at full fill
+      // compute wipe progress t once per frame
+      const elapsed = winnerStartTime ? (now - winnerStartTime) / 1000 : 0;
+      const tprog = Math.min(1, elapsed / winnerGrowDuration);
+      const winnerScale = Math.max(0.18, 1 - tprog); // shrink as wipe progresses
       r = baseRadius * 0.95 * winnerScale * (t.shrink ?? 1);
     } else {
       // Losers keep gentle pulse until they vanish
@@ -355,18 +418,28 @@ function render(){
     }
   }
 
-  // Winner takeover: expanding circle fill from winner position
-  if (winnerId !== null && winnerGrowR < winnerGrowTarget) {
-    winnerGrowR += (winnerGrowTarget - winnerGrowR) * winnerGrowSpeed; // ease
+  // Winner takeover: easing-based radial fill from winner position
+  if (winnerId !== null) {
+    const elapsed = winnerStartTime ? (now - winnerStartTime) / 1000 : 0;
+    const t = Math.min(1, elapsed / winnerGrowDuration); // 0..1
+    const easeInCubic = (x) => x * x * x; // starts slow, accelerates
+    // const easeInExpo = (x) => (x === 0 ? 0 : Math.pow(2, 10 * (x - 1))); // spicier
+
+    const targetR = Math.hypot(window.innerWidth, window.innerHeight);
+    const radius = targetR * easeInCubic(t);
+
     ctx.save();
     ctx.fillStyle = rgba(victoryColor, 0.88);
     ctx.beginPath();
-    ctx.arc(winnerPos.x, winnerPos.y, winnerGrowR, 0, Math.PI*2);
+    ctx.arc(winnerPos.x, winnerPos.y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-  } else if (winnerId !== null) {
-    ctx.fillStyle = rgba(victoryColor, 0.88);
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Once t reaches 1, keep the fill solid (safety for precision)
+    if (t >= 1) {
+      ctx.fillStyle = rgba(victoryColor, 0.88);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
   }
 
   // Premium FX over the fill
