@@ -1,61 +1,39 @@
-// Auto-update service worker: network-first for fresh code, cache for offline
+const CACHE_NAME = 'game-night-v1';
+const OFFLINE_URLS = [
+  './',
+  'index.html',
+  'style.css',
+  'app.js',
+  'manifest.json',
+  'images/splash.png',
+  'icons/icon-192.png',
+  'icons/icon-512.png'
+];
 
-const CACHE_NAME = "tio-pepes-runtime";
-
-self.addEventListener("install", (event) => {
-  // Activate this SW immediately
+self.addEventListener('install', evt => {
+  evt.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(OFFLINE_URLS))
+  );
   self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
-  // Clean old caches and take control of open pages
-  event.waitUntil(
-    caches.keys().then((names) =>
-      Promise.all(names.map((n) => (n !== CACHE_NAME ? caches.delete(n) : Promise.resolve())))
-    )
-  );
-  self.clients.claim();
+self.addEventListener('activate', evt => {
+  evt.waitUntil(self.clients.claim());
 });
 
-self.addEventListener("fetch", (event) => {
-  const req = event.request;
-
-  // Only handle GETs
-  if (req.method !== "GET") return;
-
-  const url = new URL(req.url);
-  const sameOrigin = url.origin === self.location.origin;
-
-  // 1) HTML navigations: network-first, fallback to cached index.html
-  if (sameOrigin && req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((resp) => {
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then((c) => c.put("./index.html", copy)).catch(() => {});
-          return resp;
+self.addEventListener('fetch', evt => {
+  evt.respondWith(
+    caches.match(evt.request).then(cached => {
+      const networked = fetch(evt.request)
+        .then(response => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then(cache => cache.put(evt.request, response.clone()));
+          }
+          return response;
         })
-        .catch(() => caches.match("./index.html"))
-    );
-    return;
-  }
-
-  // 2) Static assets (JS, CSS, images, manifest): network-first, fallback to cache
-  if (sameOrigin && ["script", "style", "image", "manifest"].includes(req.destination)) {
-    event.respondWith(
-      fetch(req)
-        .then((resp) => {
-          const copy = resp.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(req, copy)).catch(() => {});
-          return resp;
-        })
-        .catch(() => caches.match(req))
-    );
-    return;
-  }
-
-  // 3) Default: try network, else cache
-  event.respondWith(
-    fetch(req).catch(() => caches.match(req))
+        .catch(() => cached);
+      return cached || networked;
+    })
   );
 });
