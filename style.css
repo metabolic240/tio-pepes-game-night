@@ -12,14 +12,16 @@ html, body {
   font-family: system-ui, sans-serif;
 }
 
-/* Splash uses your uploaded image */
+/* Splash uses your uploaded image, with fallback to black */
 #splash {
   position: fixed;
   inset: 0;
-  background: url('images/splash.png') center/cover no-repeat;
+  background: 
+    url('images/splash.png') center/cover no-repeat,
+    #000;
   z-index: 10;
-  touch-action: none;          /* prevent drag/scroll on splash */
-  -webkit-user-select: none;   /* disable text selection */
+  touch-action: none;
+  -webkit-user-select: none;
 }
 
 /* Full-screen canvas */
