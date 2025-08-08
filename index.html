@@ -1,42 +1,75 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#6A0DAD"/>
-  <link rel="manifest" href="manifest.json">
-  <title>Tío Pepe's: Game Night!</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Tío Pepe’s: Game Night!</title>
+  <link rel="preload" href="./images/splash-portrait.png" as="image" />
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <!-- Splash Screen -->
-  <div id="splash">
-    <div id="splash-title">
-      <h1>Tío Pepe’s</h1>
-      <h2>Game Night!</h2>
-    </div>
+
+  <!-- Top bar mode switch -->
+  <div id="topbar">
+    <button id="btnPicker" class="mode-btn active" aria-label="First Player Picker" title="First Player Picker">
+      <!-- chess knight icon -->
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M6 20h12v-2H6v2zm6-16c-3.31 0-6 2.69-6 6v2h2v-2c0-2.21 1.79-4 4-4 1.48 0 2.77.81 3.46 2.02L13 9l-3 3 1 1 2-1 1 3h4l-1-4 2-1-1-2c-1.1-2.2-3.35-3.99-6-3.99z"/>
+      </svg>
+    </button>
+    <button id="btnScore" class="mode-btn" aria-label="Score Tracker" title="Score Tracker">
+      <!-- scoreboard icon -->
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M3 5h18v14H3V5zm2 2v10h14V7H5zm3 2h4v6H8V9zm6 0h2v2h-2V9zm0 3h2v3h-2v-3z"/>
+      </svg>
+    </button>
   </div>
 
-  <!-- Game Canvas -->
+  <!-- Splash (premium image background) -->
+  <div id="splash">
+    <div class="title">Tío&nbsp;Pepe’s: Game Night!</div>
+  </div>
+
+  <!-- Picker Mode Canvas + UI (always present; hidden via mode switch if needed) -->
   <canvas id="gameCanvas"></canvas>
-
-  <!-- Countdown -->
   <div id="countdown"></div>
+  <button id="replayBtn" class="hidden">Replay</button>
+  <div id="hint">Place your fingers and hold…</div>
 
-  <!-- Hint -->
-  <div id="hint">Touch and hold the screen to join</div>
+  <!-- Score Tracker Mode (toggled) -->
+  <section id="mode-score" hidden>
+    <div class="score-wrap">
+      <div id="side-top" class="side top" role="button" aria-label="Top player tap to add point">
+        <div class="name" contenteditable="true" spellcheck="false">Player 1</div>
+        <div class="points" id="p1Points">0</div>
+        <div class="wins" id="p1Wins"></div>
+      </div>
+      <div id="side-bottom" class="side bottom" role="button" aria-label="Bottom player tap to add point">
+        <div class="name" contenteditable="true" spellcheck="false">Player 2</div>
+        <div class="points" id="p2Points">0</div>
+        <div class="wins" id="p2Wins"></div>
+      </div>
+    </div>
 
-  <!-- Replay Button -->
-  <button id="replayBtn">Replay</button>
+    <div class="score-controls">
+      <label for="bestOf">Best of</label>
+      <select id="bestOf">
+        <option value="3">3</option>
+        <option value="5" selected>5</option>
+        <option value="7">7</option>
+      </select>
+      <button id="resetScore" class="ghost">Reset</button>
+    </div>
 
+    <div id="matchToast" class="toast" hidden></div>
+  </section>
+
+  <script src="./app.js" defer></script>
   <script>
+    // SW registration (uses the auto-update sw.js you already deployed)
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
-      });
+      navigator.serviceWorker.register('./sw.js').catch(()=>{});
     }
   </script>
-  <script src="app.js"></script>
 </body>
 </html>
