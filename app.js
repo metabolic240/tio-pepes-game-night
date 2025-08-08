@@ -1,5 +1,5 @@
 // Tío Pepe's: Game Night! — per-finger colors, smaller blobs (0.15), winner-blob shrinks,
-// ease-in winner color takeover, premium FX, losers shrink away, + procedural audio SFX.
+// ease-in winner color takeover, premium FX, losers shrink away, + musical procedural audio (no noise).
 
 const COUNTDOWN_START = 3;
 
@@ -44,7 +44,7 @@ let winnerGrowDuration = 1.2;       // seconds for full wipe (slightly slower/dr
 let winnerPos = { x: 0, y: 0 };
 let winnerStartTime = 0;            // timestamp when win triggered
 
-// --- Procedural Audio (no files) ---
+// --- Procedural Audio (no files, musical) ---
 let audioCtx = null;
 function initAudio() {
   if (!audioCtx) {
@@ -53,40 +53,51 @@ function initAudio() {
     audioCtx.resume();
   }
 }
-function beep({freq=440, type="sine", dur=0.18, gain=0.12}) {
+
+// Utilities
+function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
+function note(freq, { type="sine", dur=0.18, gain=0.12, when=0 } = {}) {
   if (!audioCtx) return;
-  const o = audioCtx.createOscillator();
+  const t0 = audioCtx.currentTime + when;
+  const osc = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  o.type = type; o.frequency.value = freq;
-  g.gain.setValueAtTime(0, audioCtx.currentTime);
-  g.gain.linearRampToValueAtTime(gain, audioCtx.currentTime + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-  o.connect(g).connect(audioCtx.destination);
-  o.start(); o.stop(audioCtx.currentTime + dur);
+  osc.type = type; osc.frequency.value = freq;
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(gain, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  osc.connect(g).connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0 + dur);
 }
-function noiseBurst({dur=0.25, gain=0.08, lp=1800}) {
-  if (!audioCtx) return;
-  const bufferSize = Math.floor(audioCtx.sampleRate * dur);
-  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1)*0.9;
-  const src = audioCtx.createBufferSource(); src.buffer = buffer;
-  const g = audioCtx.createGain(); g.gain.value = gain;
-  const filter = audioCtx.createBiquadFilter(); filter.type = "lowpass"; filter.frequency.value = lp;
-  src.connect(filter).connect(g).connect(audioCtx.destination);
-  src.start(); src.stop(audioCtx.currentTime + dur);
+
+// Echo helper: repeat the same tone a few times, decaying
+function echo(freq, { repeats=3, delay=0.11, decay=0.6, baseGain=0.09, dur=0.12, type="sine", startWhen=0 } = {}) {
+  for (let i = 0; i <= repeats; i++) {
+    note(freq, { type, dur, gain: baseGain * Math.pow(decay, i), when: startWhen + i * delay });
+  }
 }
-function chord({root=440, ratio=[1, 5/4, 3/2], type="triangle", dur=0.4, gain=0.08}) {
+
+// Simple arpeggio over a scale pattern with echo on each tone
+function arpeggio({ rootFreq=440, semis=[0,2,4,7,12], tempo=12, waveshape="triangle", baseGain=0.09 }) {
   if (!audioCtx) return;
-  const g = audioCtx.createGain();
-  g.gain.setValueAtTime(gain, audioCtx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
-  g.connect(audioCtx.destination);
-  ratio.forEach(r => {
-    const o = audioCtx.createOscillator();
-    o.type = type; o.frequency.value = root * r;
-    o.connect(g); o.start(); o.stop(audioCtx.currentTime + dur);
+  const stepDur = 60 / tempo; // seconds per step
+  semis.forEach((s, i) => {
+    const f = rootFreq * Math.pow(2, s/12);
+    echo(f, { repeats: 2, delay: 0.1, decay: 0.5, baseGain, dur: 0.12, type: waveshape, startWhen: i * stepDur * 0.8 });
   });
+}
+
+// A compact triad chord with a tiny echo tail
+function triad({ rootFreq=440, type="triangle", gain=0.08, dur=0.35 }) {
+  if (!audioCtx) return;
+  const tri = [1, 5/4, 3/2].map(r => rootFreq * r);
+  tri.forEach((f, i) => echo(f, { repeats: 2, delay: 0.1, decay: 0.5, baseGain: gain*(i===0?1:0.9), dur: 0.16 + i*0.02, type }));
+}
+
+// pick a root based on a color string for subtle variation
+const ROOTS = [392.00, 440.00, 493.88, 523.25, 587.33]; // G4, A4, B4, C5, D5
+function colorToRoot(colorHex) {
+  let sum = 0; for (let i=0;i<colorHex.length;i++) sum += colorHex.charCodeAt(i);
+  return ROOTS[sum % ROOTS.length];
 }
 
 const canvas = document.getElementById("gameCanvas");
@@ -344,19 +355,21 @@ function pickWinner(){
     winnerGrowT = 0;
     winnerStartTime = performance.now();
 
-    // --- Winner sound (procedural) ---
+    // --- Winner sound (musical, no noise) ---
     if (audioCtx) {
+      const root = colorToRoot(w.color);
       if (winEffectType === "confetti" || winEffectType === "rays") {
-        beep({freq: 880, type: "square", dur: 0.09, gain: 0.08});
-        setTimeout(()=>beep({freq: 1320, type: "square", dur: 0.09, gain: 0.07}), 90);
+        // Bright arcade-y pentatonic up-run with echo
+        arpeggio({ rootFreq: root, semis:[0,2,4,7,12], tempo: 14, waveshape:"square", baseGain:0.08 });
       } else if (winEffectType === "fireworks" || winEffectType === "spiral") {
-        chord({root: 523.25, ratio:[1, 5/4, 3/2], type:"triangle", dur:0.35, gain:0.09});
+        // Triumphant triad with echo tails
+        triad({ rootFreq: root, type:"triangle", gain:0.09, dur:0.36 });
       } else if (winEffectType === "ripples" || winEffectType === "bokeh") {
-        noiseBurst({dur: 0.28, gain: 0.06, lp: 1400});
+        // Soft bell-like arpeggio with gentle echo
+        arpeggio({ rootFreq: root/2, semis:[0,3,7,10,12], tempo: 11, waveshape:"sine", baseGain:0.07 });
       } else {
-        beep({freq: 1046.5, type:"sine", dur:0.07, gain:0.07});
-        setTimeout(()=>beep({freq: 1244.5, type:"sine", dur:0.07, gain:0.06}), 80);
-        setTimeout(()=>beep({freq: 1568.0, type:"sine", dur:0.1,  gain:0.06}), 160);
+        // Sparkly twinkle: quick high arpeggio
+        arpeggio({ rootFreq: root*2, semis:[0,2,5,9,12], tempo: 16, waveshape:"sine", baseGain:0.07 });
       }
     }
   }
@@ -391,7 +404,7 @@ function render(){
   for (const [id, t] of touches.entries()) {
     const isWinner = (winnerId !== null && String(id)===String(winnerId));
 
-    // Shrink losers after win; winner stays at 1 then shrinks via wipe progress
+    // Shrink losers after win; winner shrinks via wipe progress
     if (winnerId !== null && !isWinner) {
       t.shrink = Math.max(0, (t.shrink ?? 1) - 0.06);
     } else {
@@ -401,13 +414,11 @@ function render(){
     // Radius: winners stop breathing and shrink based on wipe progress
     let r;
     if (isWinner) {
-      // compute wipe progress t once per frame
       const elapsed = winnerStartTime ? (now - winnerStartTime) / 1000 : 0;
       const tprog = Math.min(1, elapsed / winnerGrowDuration);
       const winnerScale = Math.max(0.18, 1 - tprog); // shrink as wipe progresses
       r = baseRadius * 0.95 * winnerScale * (t.shrink ?? 1);
     } else {
-      // Losers keep gentle pulse until they vanish
       const pulse = (Math.sin((now - t.born)/200)+1)*0.5;
       r = baseRadius * (0.9 + 0.08 * pulse) * (t.shrink ?? 1);
     }
@@ -423,7 +434,6 @@ function render(){
     const elapsed = winnerStartTime ? (now - winnerStartTime) / 1000 : 0;
     const t = Math.min(1, elapsed / winnerGrowDuration); // 0..1
     const easeInCubic = (x) => x * x * x; // starts slow, accelerates
-    // const easeInExpo = (x) => (x === 0 ? 0 : Math.pow(2, 10 * (x - 1))); // spicier
 
     const targetR = Math.hypot(window.innerWidth, window.innerHeight);
     const radius = targetR * easeInCubic(t);
@@ -435,7 +445,6 @@ function render(){
     ctx.fill();
     ctx.restore();
 
-    // Once t reaches 1, keep the fill solid (safety for precision)
     if (t >= 1) {
       ctx.fillStyle = rgba(victoryColor, 0.88);
       ctx.fillRect(0, 0, canvas.width, canvas.height);
