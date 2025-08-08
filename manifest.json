@@ -1,12 +1,20 @@
 {
-  "name": "Tío Pepe's: Game Night!",
-  "short_name": "Game Night",
-  "start_url": "./index.html",
+  "short_name": "GameNight",
+  "name": "Tío Pepe’s Game Night Picker",
+  "start_url": ".",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#6A0DAD",
+  "theme_color": "#FF00AA",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
   ]
 }
