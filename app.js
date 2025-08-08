@@ -1,4 +1,4 @@
-// app.js — Finger picker with screen-wipe winner, press-blip & win echo, auto-reset
+// app.js — Multi-touch picker with screen-wipe winner, blip/win sounds, auto-reset
 
 // Elements
 const canvas      = document.getElementById("gameCanvas");
@@ -8,25 +8,25 @@ const countdownEl = document.getElementById("countdown");
 const replayBtn   = document.getElementById("replayBtn");
 const hint        = document.getElementById("hint");
 
-// Hide splash on first touch so canvas can receive events
+// Hide splash on first touch so canvas can get events
 splash.addEventListener("touchstart", e => {
   splash.style.display = "none";
   e.preventDefault();
 }, { passive: false });
 
 // State
-let touches        = new Map();      // touchId → { x, y }
-let roundState     = "idle";         // "idle" | "countdown" | "won"
+let touches        = new Map();    // touchId → { x, y }
+let roundState     = "idle";       // "idle" | "countdown" | "won"
 let countdown      = 3;
 let countdownTimer = null;
 let winnerId       = null;
 let winnerStart    = 0;
-const WIPE_DURATION = 1000;         // ms
+const WIPE_DURATION = 1000;        // ms for full wipe
 
-// Audio setup
+// Audio
 let audioCtx = null;
 function initAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
   else if (audioCtx.state === "suspended") audioCtx.resume();
 }
 function note(freq,{type="sine",dur=0.2,gain=0.1,when=0}={}) {
@@ -37,8 +37,8 @@ function note(freq,{type="sine",dur=0.2,gain=0.1,when=0}={}) {
   o.type            = type;
   o.frequency.value = freq;
   g.gain.setValueAtTime(0.0001, t0);
-  g.gain.exponentialRampToValueAtTime(gain,      t0 + 0.01);
-  g.gain.exponentialRampToValueAtTime(0.0001,   t0 + dur);
+  g.gain.exponentialRampToValueAtTime(gain,    t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   o.connect(g).connect(audioCtx.destination);
   o.start(t0); o.stop(t0 + dur);
 }
@@ -47,8 +47,8 @@ function echo(freq,{repeats=2,delay=0.1,decay=0.6,baseGain=0.1,dur=0.15,type="si
     note(freq, {
       type,
       dur,
-      gain: baseGain * Math.pow(decay, i),
-      when: startWhen + i * delay
+      gain: baseGain * Math.pow(decay,i),
+      when: startWhen + i*delay
     });
   }
 }
@@ -61,7 +61,7 @@ function playWinSound() {
   echo(880, { repeats:3, delay:0.1, decay:0.6, baseGain:0.15, dur:0.2, type:"triangle" });
 }
 
-// Handle high-DPI
+// Handle HiDPI
 function resize() {
   const dpr = window.devicePixelRatio || 1;
   canvas.width  = window.innerWidth  * dpr;
@@ -71,11 +71,11 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// Countdown logic
+// Countdown
 function startCountdown() {
-  if (roundState !== "idle" || !touches.size) return;
-  roundState      = "countdown";
-  countdown       = 3;
+  if (roundState !== "idle" || touches.size === 0) return;
+  roundState = "countdown";
+  countdown  = 3;
   countdownEl.textContent = countdown;
   countdownEl.style.display = "block";
   hint.style.display = "none";
@@ -93,11 +93,13 @@ function startCountdown() {
   }, 1000);
 }
 
-// Pick a random winner
+// Pick winner & start wipe
 function pickWinner() {
   const ids = Array.from(touches.keys());
-  if (!ids.length) return resetRound();
-
+  if (!ids.length) {
+    resetRound();
+    return;
+  }
   winnerId    = ids[Math.floor(Math.random() * ids.length)];
   roundState  = "won";
   winnerStart = performance.now();
@@ -117,7 +119,7 @@ function resetRound() {
 
 // Touch handlers
 canvas.addEventListener("touchstart", e => {
-  if (roundState !== "idle") return;
+  if (roundState === "won") return;
 
   initAudio();
   e.preventDefault();
@@ -125,11 +127,11 @@ canvas.addEventListener("touchstart", e => {
     touches.set(t.identifier, { x: t.clientX, y: t.clientY });
     playBlip();
   }
-  startCountdown();
+  if (!countdownTimer) startCountdown();
 }, { passive: false });
 
 canvas.addEventListener("touchmove", e => {
-  if (roundState !== "countdown") return;
+  if (roundState === "won") return;
   e.preventDefault();
   for (let t of e.changedTouches) {
     if (touches.has(t.identifier)) {
@@ -141,14 +143,14 @@ canvas.addEventListener("touchmove", e => {
 canvas.addEventListener("touchend",   e => { for (let t of e.changedTouches) touches.delete(t.identifier); });
 canvas.addEventListener("touchcancel",e => { for (let t of e.changedTouches) touches.delete(t.identifier); });
 
-// Manual reset if needed
+// Manual reset if desired
 replayBtn.addEventListener("click", resetRound);
 
-// Main render loop
+// Render loop
 function render(ts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw finger blobs
+  // Draw all finger blobs
   for (let [id, pos] of touches) {
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, 50, 0, 2 * Math.PI);
@@ -156,11 +158,11 @@ function render(ts) {
     ctx.fill();
   }
 
-  // Winner wipe animation
+  // Winner wipe
   if (roundState === "won" && winnerId !== null) {
     const elapsed = ts - winnerStart;
     const t       = Math.min(elapsed / WIPE_DURATION, 1);
-    const ease    = t * t * t;  // cubic ease-in
+    const ease    = t * t * t;
     const maxR    = Math.hypot(canvas.width, canvas.height);
     const r       = maxR * ease;
     const pos     = touches.get(winnerId) || { x: canvas.width/2, y: canvas.height/2 };
@@ -170,9 +172,7 @@ function render(ts) {
     ctx.fillStyle = "rgba(255,255,255,0.4)";
     ctx.fill();
 
-    if (t >= 1) {
-      resetRound();
-    }
+    if (t >= 1) resetRound();
   }
 
   requestAnimationFrame(render);
