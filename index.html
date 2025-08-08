@@ -4,20 +4,19 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <title>Tío Pepe’s Game Night Picker</title>
-  <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- Splash (shown until first tap) -->
+  <!-- Splash screen (uses images/splash.png) -->
   <div id="splash"></div>
 
-  <!-- Finger-picker canvas -->
+  <!-- Canvas for finger blobs and wipe -->
   <canvas id="gameCanvas"></canvas>
 
   <!-- Countdown display -->
   <div id="countdown"></div>
 
-  <!-- Replay button (shown after a round) -->
+  <!-- Replay button (in case you want manual reset) -->
   <button id="replayBtn" class="hidden">Replay</button>
 
   <!-- Initial hint -->
@@ -25,11 +24,5 @@
 
   <!-- Main logic -->
   <script src="app.js" defer></script>
-  <!-- Service worker for offline / auto-update -->
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(()=>{});
-    }
-  </script>
 </body>
 </html>
