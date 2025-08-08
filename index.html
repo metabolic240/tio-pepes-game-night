@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#6A0DAD"/>
+  <link rel="manifest" href="manifest.json">
+  <title>Tío Pepe's: Game Night!</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="apple-touch-icon" href="icons/icon-180.png" />
+</head>
+<body>
+  <!-- Splash Screen -->
+  <div id="splash">
+    <div id="splash-title">
+      <h1>Tío Pepe’s</h1>
+      <h2>Game Night!</h2>
+    </div>
+  </div>
+
+  <!-- Game Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Countdown -->
+  <div id="countdown"></div>
+
+  <!-- Hint -->
+  <div id="hint">Touch and hold the screen to join</div>
+
+  <!-- Replay Button -->
+  <button id="replayBtn">Replay</button>
+
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(() => {});
+      });
+    }
+  </script>
+  <script src="app.js"></script>
+</body>
+</html>
