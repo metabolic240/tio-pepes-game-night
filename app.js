@@ -277,7 +277,7 @@ function render() {
 
   // Draw blobs
   const now = performance.now();
-  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.05; // ~5% of min dimension
+  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.1; // ~5% of min dimension
   for (const [id, t] of touches.entries()) {
     const pulse = (Math.sin((now - t.born) / 200) + 1) * 0.5; // 0..1
     const r = baseRadius * (0.9 + 0.2 * pulse);
