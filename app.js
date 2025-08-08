@@ -1,7 +1,4 @@
-// Tío Pepe's: Game Night! — picker + score hub
-// Picker: per-finger colors, smaller blobs (0.15), losers shrink, winner wipe (ease-in),
-// premium FX, event-driven sounds only.
-// Score: two zones, best-of N, tap to add, celebratory tone.
+// Tío Pepe's: Game Night! — picker + score hub (with working mode buttons & locked rounds)
 
 // ------------------ Constants & Theme ------------------
 const COUNTDOWN_START = 3;
@@ -26,7 +23,6 @@ const replayBtn = document.getElementById("replayBtn");
 const splash = document.getElementById("splash");
 const hint = document.getElementById("hint");
 
-const topbar = document.getElementById("topbar");
 const btnPicker = document.getElementById("btnPicker");
 const btnScore  = document.getElementById("btnScore");
 const sectionScore = document.getElementById("mode-score");
@@ -58,7 +54,6 @@ function initAudio() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   else if (audioCtx.state === "suspended") audioCtx.resume();
 }
-function midiToFreq(m) { return 440 * Math.pow(2, (m - 69) / 12); }
 function note(freq, { type="sine", dur=0.18, gain=0.12, when=0 } = {}) {
   if (!audioCtx) return;
   const t0 = audioCtx.currentTime + when;
@@ -100,12 +95,14 @@ let countdown = COUNTDOWN_START;
 let countdownTimer = null;
 let winnerId = null;
 
+// round state: 'idle' | 'countdown' | 'won'
+let roundState = 'idle';
+
 let confetti = [], ripples = [], rays = [], sparks = [], spiral = [], twinkles = [], orbs = [];
 let winEffectType = "confetti";
 
 // Time-based winner wipe
 let victoryColor = "#ffffff";
-let winnerGrowT = 0;           // 0..1 progress
 let winnerGrowDuration = 1.2;  // seconds
 let winnerPos = { x: 0, y: 0 };
 let winnerStartTime = 0;
@@ -120,14 +117,14 @@ let currentMode = localStorage.getItem("mode") || MODE_PICKER;
 let p1 = 0, p2 = 0;
 let p1Wins = 0, p2Wins = 0;
 let bestOf = parseInt(localStorage.getItem("bestOf") || (bestOfSel?.value || "5"), 10);
-bestOfSel.value = String(bestOf);
+if (bestOfSel) bestOfSel.value = String(bestOf);
 let targetWins = Math.ceil(bestOf / 2);
 
 // ------------------ Theme & UI Helpers ------------------
 function pickRandomTheme() {
   currentTheme = themes[Math.floor(Math.random() * themes.length)];
   document.body.style.background = currentTheme.background;
-  replayBtn.style.background = currentTheme.glowColor;
+  if (replayBtn) replayBtn.style.background = currentTheme.glowColor;
 }
 function drawBlob(x,y,r,color,glow){
   ctx.save(); ctx.fillStyle = color; ctx.shadowBlur = 30; ctx.shadowColor = glow;
@@ -211,13 +208,25 @@ function launchBokeh(color){
 function updateBokeh(){ for(const o of orbs){ o.x+=o.vx; o.y+=o.vy; if(o.x<-50||o.x>window.innerWidth+50) o.vx*=-1; if(o.y<-50||o.y>window.innerHeight+50) o.vy*=-1; } }
 function drawBokeh(){ ctx.save(); for(const o of orbs){ ctx.fillStyle = rgba(o.color, o.alpha); ctx.beginPath(); ctx.arc(o.x,o.y,o.r,0,Math.PI*2); ctx.fill(); } ctx.restore(); }
 
-// ------------------ Mode Switching ------------------
+// ------------------ Mode Switching (buttons now work) ------------------
 function showMode(mode) {
   currentMode = mode;
   localStorage.setItem("mode", mode);
-  btnPicker.classList.toggle("active", mode === MODE_PICKER);
-  btnScore.classList.toggle("active",  mode === MODE_SCORE);
-  sectionScore.hidden = (mode !== MODE_SCORE);
+  if (btnPicker) btnPicker.classList.toggle("active", mode === MODE_PICKER);
+  if (btnScore)  btnScore.classList.toggle("active",  mode === MODE_SCORE);
+  if (sectionScore) sectionScore.hidden = (mode !== MODE_SCORE);
+
+  // When entering score mode, hide picker UI affordances
+  if (mode === MODE_SCORE) {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+    roundState = 'idle';
+    winnerId = null;
+    countdownEl.style.display = "none";
+    replayBtn.style.display = "none";
+    hint.style.display = "none";
+  } else {
+    hint.style.display = "block";
+  }
 }
 btnPicker?.addEventListener("click", () => showMode(MODE_PICKER));
 btnScore?.addEventListener("click",  () => showMode(MODE_SCORE));
@@ -226,6 +235,7 @@ btnScore?.addEventListener("click",  () => showMode(MODE_SCORE));
 function renderWins() {
   const fill = (el, wins) => {
     el.innerHTML = "";
+    if (!el) return;
     for (let i=0;i<targetWins;i++) {
       const d = document.createElement("div");
       d.className = "win-dot" + (i < wins ? " filled" : "");
@@ -235,8 +245,8 @@ function renderWins() {
   fill(p1WinsEl, p1Wins); fill(p2WinsEl, p2Wins);
 }
 function renderPoints() {
-  p1PointsEl.textContent = String(p1);
-  p2PointsEl.textContent = String(p2);
+  if (p1PointsEl) p1PointsEl.textContent = String(p1);
+  if (p2PointsEl) p2PointsEl.textContent = String(p2);
 }
 function resetPoints() { p1 = 0; p2 = 0; renderPoints(); }
 function showToast(msg) {
@@ -275,8 +285,11 @@ bestOfSel?.addEventListener("change", () => {
 });
 resetBtn?.addEventListener("click", () => { p1Wins=0; p2Wins=0; resetPoints(); renderWins(); });
 
-// ------------------ Picker Touch Handling ------------------
+// ------------------ Picker Touch Handling (now gated by roundState) ------------------
 canvas.addEventListener("touchstart", (e) => {
+  // If the round isn't idle (countdown or already won), ignore new touches
+  if (roundState !== 'idle') return;
+
   initAudio(); // unlock audio on first touch
   e.preventDefault();
   for (const t of e.changedTouches) {
@@ -284,7 +297,7 @@ canvas.addEventListener("touchstart", (e) => {
       x: t.clientX, y: t.clientY, born: performance.now(),
       color: playerColors[colorIndex++ % playerColors.length], shrink: 1
     });
-    // Short press blip per finger (scheduled in AudioContext time)
+    // Short press blip per finger
     if (audioCtx) {
       const base = 880; const f = base * (1 + (t.identifier % 5) * 0.03);
       echo(f, { repeats: 2, delay: 0.08, decay: 0.5, baseGain: 0.05, dur: 0.05, type: "square", startWhen: 0 });
@@ -294,6 +307,7 @@ canvas.addEventListener("touchstart", (e) => {
 }, { passive:false });
 
 canvas.addEventListener("touchmove", (e) => {
+  if (roundState !== 'countdown') return; // only track during countdown
   e.preventDefault();
   for (const t of e.changedTouches) {
     const obj = touches.get(t.identifier);
@@ -307,10 +321,12 @@ canvas.addEventListener("touchcancel",(e)=>{ e.preventDefault(); for (const t of
 
 // ------------------ Picker Round Flow ------------------
 function startCountdown(){
+  roundState = 'countdown';
+
   // reset FX & wipe & sounds
   confetti.length = sparks.length = rays.length = spiral.length = 0;
   twinkles.length = orbs.length = 0; ripples.length = 0;
-  winnerId = null; winnerGrowT = 0; winnerPos = {x:0,y:0}; winnerStartTime = 0;
+  winnerId = null; winnerPos = {x:0,y:0}; winnerStartTime = 0;
   winnerSoundPlayed = false;
 
   for (const [, t] of touches) t.shrink = 1;
@@ -332,15 +348,18 @@ function startCountdown(){
 }
 
 function pickWinner(){
+  if (roundState === 'won' || winnerId !== null) return; // already have a winner
   const ids = Array.from(touches.keys());
   if (ids.length === 0) {
     countdownEl.style.display = "block";
     countdownEl.textContent = "No Touch!";
     replayBtn.style.display = "block";
+    roundState = 'won';
     return;
   }
   const id = ids[Math.floor(Math.random() * ids.length)];
   winnerId = id;
+  roundState = 'won';
 
   for (const [tid, t] of touches) if (String(tid)!==String(winnerId)) t.shrink = 1;
 
@@ -356,7 +375,6 @@ function pickWinner(){
     else if (winEffectType==="sparkles") launchSparkles(w.x,w.y,w.color);
     else if (winEffectType==="bokeh")    launchBokeh(w.color);
 
-    winnerGrowT = 0;
     winnerStartTime = performance.now();
 
     // Winner sound (guarded so it only plays once)
@@ -378,24 +396,31 @@ function pickWinner(){
 }
 
 function startRound(){
+  // reset UI bits
   replayBtn.style.display = "none";
   countdownEl.style.display = "none";
   hint.style.display = "block";
+
+  // reset state
+  roundState = 'idle';
+  touches.clear();
+  winnerId = null;
+  twinkles.length=orbs.length=0;
+  winnerSoundPlayed = false;
+
   pickRandomTheme();
-  winnerId = null; winnerGrowT = 0; twinkles.length=orbs.length=0; winnerSoundPlayed = false;
-  if (touches.size > 0) startCountdown();
+  // Wait for new touches to start the countdown
 }
 replayBtn.addEventListener("click", startRound);
 
 // Splash → auto-start
 window.addEventListener("load", () => {
   setTimeout(() => {
-    splash.style.display = "none";
-    // start in whichever mode the user last used
+    if (splash) splash.style.display = "none";
+    // Initialize modes/UI
     showMode(currentMode);
-    startRound();
-    // Score UI initial render
     renderPoints(); renderWins();
+    pickRandomTheme();
   }, 1800);
 });
 
@@ -409,8 +434,8 @@ function render(){
   // Blobs
   for (const [id, t] of touches.entries()) {
     const isWinner = (winnerId !== null && String(id)===String(winnerId));
-    if (winnerId !== null && !isWinner) t.shrink = Math.max(0, (t.shrink ?? 1) - 0.06);
-    else t.shrink = Math.min(1, (t.shrink ?? 1) + 0.1);
+    if (roundState === 'won' && !isWinner) t.shrink = Math.max(0, (t.shrink ?? 1) - 0.06);
+    else if (roundState === 'countdown' || roundState === 'idle') t.shrink = Math.min(1, (t.shrink ?? 1) + 0.1);
 
     let r;
     if (isWinner) {
