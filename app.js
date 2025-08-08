@@ -1,4 +1,5 @@
-// Tío Pepe's: Game Night! — per-finger colors, 0.25 blob size, winner color takeover, varied win FX
+// Tío Pepe's: Game Night! — per-finger colors, 0.25 blob size, winner takeover, varied FX,
+// and LOSERS SHRINK AWAY after winner reveal.
 
 const COUNTDOWN_START = 3; // seconds
 
@@ -36,7 +37,7 @@ const themes = [
 const WIN_EFFECTS = ["confetti", "ripples", "rays", "fireworks", "spiral"];
 
 let currentTheme;
-let touches = new Map(); // id -> { x, y, born, color }
+let touches = new Map(); // id -> { x, y, born, color, shrink }
 let countdown = COUNTDOWN_START;
 let countdownTimer = null;
 let winnerId = null;
@@ -89,7 +90,8 @@ canvas.addEventListener("touchstart", (e) => {
       x: t.clientX,
       y: t.clientY,
       born: performance.now(),
-      color: playerColors[colorIndex++ % playerColors.length]
+      color: playerColors[colorIndex++ % playerColors.length],
+      shrink: 1 // 1 = full size, will animate down for losers after win
     });
   }
   if (!countdownTimer) startCountdown();
@@ -205,7 +207,7 @@ function drawRipples() {
   for (const r of ripples) drawGlowRing(r.x, r.y, r.r, r.color, Math.max(0, r.alpha));
 }
 
-// Rays (radial beams from win point)
+// Rays (radial beams)
 function launchRays(x, y, color) {
   rays.length = 0;
   const count = 24;
@@ -215,10 +217,7 @@ function launchRays(x, y, color) {
   }
 }
 function updateRays() {
-  for (const r of rays) {
-    r.len += 32;
-    r.alpha -= 0.012;
-  }
+  for (const r of rays) { r.len += 32; r.alpha -= 0.012; }
   rays = rays.filter(r => r.alpha > 0);
 }
 function drawRays() {
@@ -292,7 +291,6 @@ function launchSpiral(x, y, color) {
   }
 }
 function updateSpiral() {
-  // Slow fade-out
   for (const p of spiral) p.alpha -= 0.01;
   spiral = spiral.filter(p => p.alpha > 0);
 }
@@ -312,6 +310,9 @@ function startCountdown() {
   confetti.length = sparks.length = rays.length = spiral.length = 0;
   ripples.length = 0;
   victoryAlpha = 0;
+
+  // Reset any previous shrink
+  for (const [, t] of touches) t.shrink = 1;
 
   winnerId = null;
   countdown = COUNTDOWN_START;
@@ -343,12 +344,16 @@ function pickWinner() {
   const id = ids[Math.floor(Math.random() * ids.length)];
   winnerId = id;
 
+  // Start shrinking ALL non-winner blobs
+  for (const [tid, t] of touches) {
+    if (String(tid) !== String(winnerId)) t.shrink = 1; // start at full, animate down in render()
+  }
+
   const wTouch = touches.get(winnerId);
   if (wTouch) {
     victoryColor = wTouch.color; // flood color
     winEffectType = WIN_EFFECTS[Math.floor(Math.random() * WIN_EFFECTS.length)];
 
-    // Kick off the chosen FX
     if (winEffectType === "confetti") {
       launchConfetti(wTouch.x, wTouch.y, wTouch.color);
     } else if (winEffectType === "ripples") {
@@ -387,16 +392,29 @@ window.addEventListener("load", () => {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Blob size: split the difference (0.25 of min dimension)
+  // Blob size: 0.25 of min dimension
   const now = performance.now();
   const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.25;
 
   for (const [id, t] of touches.entries()) {
+    // Shrink logic:
+    // If there's a winner and this is NOT the winner, shrink towards 0
+    if (winnerId !== null && String(id) !== String(winnerId)) {
+      t.shrink = Math.max(0, (t.shrink ?? 1) - 0.06); // adjust speed as you like
+    } else {
+      // Winner (or pre-win) stays full size
+      t.shrink = Math.min(1, (t.shrink ?? 1) + 0.1);
+    }
+
     const pulse = (Math.sin((now - t.born) / 200) + 1) * 0.5; // 0..1
-    const r = baseRadius * (0.9 + 0.08 * pulse);
-    drawBlob(t.x, t.y, r, t.color, t.color);
-    if (String(id) === String(winnerId)) {
-      drawGlowRing(t.x, t.y, r + 12, t.color, 0.9);
+    const r = baseRadius * (0.9 + 0.08 * pulse) * (t.shrink ?? 1);
+
+    // Draw only if still visible
+    if (r > 0.5) {
+      drawBlob(t.x, t.y, r, t.color, t.color);
+      if (String(id) === String(winnerId)) {
+        drawGlowRing(t.x, t.y, r + 12, t.color, 0.9);
+      }
     }
   }
 
