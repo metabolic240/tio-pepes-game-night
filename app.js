@@ -1,11 +1,29 @@
-// Tío Pepe's: Game Night! (No-sound version, PWA-ready)
+// Tío Pepe's: Game Night! (No-sound) — per-finger colors + larger blobs
+
 const COUNTDOWN_START = 3; // seconds
+
+// Distinct player colors (cycles if >10 touches)
+const playerColors = [
+  "#FF3B30", // red
+  "#34C759", // green
+  "#007AFF", // blue
+  "#FF9500", // orange
+  "#AF52DE", // purple
+  "#5AC8FA", // light blue
+  "#FF2D55", // pink
+  "#FFD60A", // yellow
+  "#4CD964", // lime
+  "#5856D6"  // indigo
+];
+let colorIndex = 0;
+
 const themes = [
   {
     name: "Neon Nights",
     blobColor: "#00FFFF",
     glowColor: "#FF00AA",
-    background: "radial-gradient(1200px 800px at 20% 30%, rgba(0,255,255,0.12), transparent 60%), radial-gradient(1200px 800px at 80% 70%, rgba(255,0,170,0.12), transparent 60%), #000",
+    background:
+      "radial-gradient(1200px 800px at 20% 30%, rgba(0,255,255,0.12), transparent 60%), radial-gradient(1200px 800px at 80% 70%, rgba(255,0,170,0.12), transparent 60%), #000",
     effect: "confetti",
     confetti: ["#0ff", "#ff00aa", "#ffffff"]
   },
@@ -22,7 +40,7 @@ const themes = [
     blobColor: "#00CED1",
     glowColor: "#1E90FF",
     background: "linear-gradient(45deg,#000428,#004e92)",
-    effect: "ripple",
+    effect: "ripple"
   },
   {
     name: "Festival Pop",
@@ -37,7 +55,7 @@ const themes = [
     blobColor: "#000000",
     glowColor: "#FFD700",
     background: "#ffffff",
-    effect: "ripple",
+    effect: "ripple"
   },
   {
     name: "Peruvian",
@@ -50,74 +68,95 @@ const themes = [
 ];
 
 let currentTheme;
-let touches = new Map();
+let touches = new Map(); // id -> { x, y, born, color }
 let countdown = COUNTDOWN_START;
 let countdownTimer = null;
 let winnerId = null;
 let dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
 let confetti = [];
 let ripples = [];
-let running = true;
 
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
-const countdownEl = document.getElementById('countdown');
-const replayBtn = document.getElementById('replayBtn');
-const splash = document.getElementById('splash');
-const hint = document.getElementById('hint');
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const countdownEl = document.getElementById("countdown");
+const replayBtn = document.getElementById("replayBtn");
+const splash = document.getElementById("splash");
+const hint = document.getElementById("hint");
 
 function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
-  canvas.style.width = w + 'px';
-  canvas.style.height = h + 'px';
+  canvas.style.width = w + "px";
+  canvas.style.height = h + "px";
   canvas.width = Math.floor(w * dpr);
   canvas.height = Math.floor(h * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-window.addEventListener('resize', resize);
+window.addEventListener("resize", resize);
 resize();
 
 function pickRandomTheme() {
   currentTheme = themes[Math.floor(Math.random() * themes.length)];
   document.body.style.background = currentTheme.background;
-  // Set replay button color to theme glow
   replayBtn.style.background = currentTheme.glowColor;
 }
 
 // Touch handling
-canvas.addEventListener('touchstart', e => {
-  e.preventDefault();
-  for (const t of e.changedTouches) {
-    touches.set(t.identifier, { x: t.clientX, y: t.clientY, born: performance.now() });
-  }
-  if (!countdownTimer) {
-    // start when first touch appears
-    startCountdown();
-  }
-}, { passive: false });
+canvas.addEventListener(
+  "touchstart",
+  (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      touches.set(t.identifier, {
+        x: t.clientX,
+        y: t.clientY,
+        born: performance.now(),
+        color: playerColors[colorIndex++ % playerColors.length]
+      });
+    }
+    if (!countdownTimer) {
+      startCountdown();
+    }
+  },
+  { passive: false }
+);
 
-canvas.addEventListener('touchmove', e => {
-  e.preventDefault();
-  for (const t of e.changedTouches) {
-    const obj = touches.get(t.identifier);
-    if (obj) { obj.x = t.clientX; obj.y = t.clientY; }
-  }
-}, { passive: false });
+canvas.addEventListener(
+  "touchmove",
+  (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      const obj = touches.get(t.identifier);
+      if (obj) {
+        obj.x = t.clientX;
+        obj.y = t.clientY;
+      }
+    }
+  },
+  { passive: false }
+);
 
-canvas.addEventListener('touchend', e => {
-  e.preventDefault();
-  for (const t of e.changedTouches) {
-    touches.delete(t.identifier);
-  }
-}, { passive: false });
+function clearTouch(id) {
+  // If the winner lifts, keep effects; we just remove tracking
+  touches.delete(id);
+}
 
-canvas.addEventListener('touchcancel', e => {
-  e.preventDefault();
-  for (const t of e.changedTouches) {
-    touches.delete(t.identifier);
-  }
-}, { passive: false });
+canvas.addEventListener(
+  "touchend",
+  (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) clearTouch(t.identifier);
+  },
+  { passive: false }
+);
+canvas.addEventListener(
+  "touchcancel",
+  (e) => {
+    e.preventDefault();
+    for (const t of e.changedTouches) clearTouch(t.identifier);
+  },
+  { passive: false }
+);
 
 // Drawing helpers
 function drawBlob(x, y, r, color, glow) {
@@ -131,7 +170,7 @@ function drawBlob(x, y, r, color, glow) {
   ctx.restore();
 }
 
-function drawGlowRing(x, y, r, glow, alpha=1) {
+function drawGlowRing(x, y, r, glow, alpha = 1) {
   ctx.save();
   ctx.strokeStyle = glow;
   ctx.lineWidth = 8;
@@ -148,35 +187,34 @@ function drawGlowRing(x, y, r, glow, alpha=1) {
 function launchConfetti(x, y, palette) {
   confetti.length = 0;
   const count = 80;
-  for (let i=0; i<count; i++) {
+  for (let i = 0; i < count; i++) {
     confetti.push({
-      x, y,
-      vx: (Math.random()*2-1) * 5,
-      vy: (Math.random()*-1) * 7 - 2,
-      size: Math.random()*6 + 3,
-      color: palette[Math.floor(Math.random()*palette.length)],
-      life: 120 + Math.random()*40
+      x,
+      y,
+      vx: (Math.random() * 2 - 1) * 5,
+      vy: Math.random() * -7 - 2,
+      size: Math.random() * 6 + 3,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      life: 120 + Math.random() * 40
     });
   }
 }
-
 function updateConfetti() {
   for (const c of confetti) {
-    c.vy += 0.15; // gravity
+    c.vy += 0.15;
     c.x += c.vx;
     c.y += c.vy;
     c.life -= 1;
   }
-  confetti = confetti.filter(c => c.life > 0 && c.y < window.innerHeight + 40);
+  confetti = confetti.filter((c) => c.life > 0 && c.y < window.innerHeight + 40);
 }
-
 function drawConfetti() {
   for (const c of confetti) {
     ctx.save();
     ctx.fillStyle = c.color;
     ctx.translate(c.x, c.y);
     ctx.rotate((c.life % 360) * 0.05);
-    ctx.fillRect(-c.size/2, -c.size/2, c.size, c.size);
+    ctx.fillRect(-c.size / 2, -c.size / 2, c.size, c.size);
     ctx.restore();
   }
 }
@@ -184,15 +222,13 @@ function drawConfetti() {
 function addRipple(x, y) {
   ripples.push({ x, y, r: 20, alpha: 1 });
 }
-
 function updateRipples() {
   for (const r of ripples) {
     r.r += 6;
     r.alpha -= 0.02;
   }
-  ripples = ripples.filter(r => r.alpha > 0);
+  ripples = ripples.filter((r) => r.alpha > 0);
 }
-
 function drawRipples() {
   for (const r of ripples) {
     drawGlowRing(r.x, r.y, r.r, currentTheme.glowColor, Math.max(0, r.alpha));
@@ -200,16 +236,14 @@ function drawRipples() {
 }
 
 function startCountdown() {
-  // reset
   winnerId = null;
   confetti.length = 0;
   ripples.length = 0;
   countdown = COUNTDOWN_START;
-  countdownEl.style.display = 'block';
+  countdownEl.style.display = "block";
   countdownEl.textContent = String(countdown);
-  hint.style.display = 'none';
+  hint.style.display = "none";
 
-  // start timer
   countdownTimer = setInterval(() => {
     countdown--;
     if (countdown > 0) {
@@ -226,47 +260,43 @@ function startCountdown() {
 function pickWinner() {
   const ids = Array.from(touches.keys());
   if (ids.length === 0) {
-    countdownEl.style.display = 'block';
+    countdownEl.style.display = "block";
     countdownEl.textContent = "No Touch!";
-    replayBtn.style.display = 'block';
+    replayBtn.style.display = "block";
     return;
   }
   const id = ids[Math.floor(Math.random() * ids.length)];
   winnerId = id;
 
-  // Trigger effect
   const wTouch = touches.get(winnerId);
   if (wTouch) {
     if (currentTheme.effect === "confetti") {
       const palette = currentTheme.confetti || ["#ffffff"];
       launchConfetti(wTouch.x, wTouch.y, palette);
     } else {
-      // ripple
-      for (let i=0; i<8; i++) setTimeout(() => addRipple(wTouch.x, wTouch.y), i*80);
+      for (let i = 0; i < 8; i++) setTimeout(() => addRipple(wTouch.x, wTouch.y), i * 80);
     }
   }
-  replayBtn.style.display = 'block';
+  replayBtn.style.display = "block";
 }
 
 function startRound() {
-  replayBtn.style.display = 'none';
-  countdownEl.style.display = 'none';
-  hint.style.display = 'block';
+  replayBtn.style.display = "none";
+  countdownEl.style.display = "none";
+  hint.style.display = "block";
   pickRandomTheme();
   // If players are already touching, then start timer immediately
   if (touches.size > 0) {
     startCountdown();
-  } else {
-    // otherwise wait for first touch -> startCountdown() in touchstart
   }
 }
 
-replayBtn.addEventListener('click', startRound);
+replayBtn.addEventListener("click", startRound);
 
-// Splash
-window.addEventListener('load', () => {
+// Splash → auto-start
+window.addEventListener("load", () => {
   setTimeout(() => {
-    splash.style.display = 'none';
+    splash.style.display = "none";
     startRound();
   }, 1000);
 });
@@ -275,19 +305,20 @@ window.addEventListener('load', () => {
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw blobs
+  // Bigger, easier-to-see blobs: 20% of min screen dimension
   const now = performance.now();
-  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.2; // ~5% of min dimension
+  const baseRadius = Math.min(window.innerWidth, window.innerHeight) * 0.2;
+
   for (const [id, t] of touches.entries()) {
     const pulse = (Math.sin((now - t.born) / 200) + 1) * 0.5; // 0..1
-    const r = baseRadius * (0.9 + 0.2 * pulse);
-    drawBlob(t.x, t.y, r, currentTheme.blobColor, currentTheme.glowColor);
+    const r = baseRadius * (0.9 + 0.08 * pulse);
+    // Use per-finger color for both fill and glow
+    drawBlob(t.x, t.y, r, t.color, t.color);
     if (String(id) === String(winnerId)) {
-      drawGlowRing(t.x, t.y, r + 12, currentTheme.glowColor, 0.9);
+      drawGlowRing(t.x, t.y, r + 12, t.color, 0.9);
     }
   }
 
-  // Effects
   if (currentTheme && currentTheme.effect === "confetti") {
     updateConfetti();
     drawConfetti();
