@@ -1,4 +1,4 @@
-// Tío Pepe's: Game Night! — per-finger colors, 0.25 blob size, winner takeover, varied FX,
+// Tío Pepe's: Game Night! — per-finger colors, 0.20 blob size, winner takeover, varied FX,
 // and LOSERS SHRINK AWAY after winner reveal.
 
 const COUNTDOWN_START = 3; // seconds
