@@ -15,13 +15,21 @@ splash.addEventListener("touchstart", e => {
 }, { passive: false });
 
 // State
-let touches        = new Map();    // touchId → { x, y }
+let touches        = new Map();    // touchId → { x, y, color }
 let roundState     = "idle";       // "idle" | "countdown" | "won"
 let countdown      = 3;
 let countdownTimer = null;
 let winnerId       = null;
 let winnerStart    = 0;
+let winnerColor    = "#FFF";
 const WIPE_DURATION = 1000;        // ms for full wipe
+
+// Color palette for fingers
+const COLORS = ["#FF4D4D","#4DD0FF","#4DFF91","#FFD24D","#A64DFF","#FF6EC7","#4DFFDB","#FF8F4D"];
+let nextColor = 0;
+
+// Confetti particles for flashy winner celebration
+let confetti = []; // each {x,y,vx,vy,color,life}
 
 // Audio
 let audioCtx = null;
@@ -59,6 +67,22 @@ function playBlip() {
 function playWinSound() {
   initAudio();
   echo(880, { repeats:3, delay:0.1, decay:0.6, baseGain:0.15, dur:0.2, type:"triangle" });
+}
+
+function spawnConfetti(origin) {
+  const pos = origin || { x: canvas.width/2, y: canvas.height/2 };
+  for (let i = 0; i < 80; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * 6 + 2;
+    confetti.push({
+      x: pos.x,
+      y: pos.y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color: COLORS[Math.floor(Math.random() * COLORS.length)],
+      life: 0
+    });
+  }
 }
 
 // Handle HiDPI
@@ -101,9 +125,12 @@ function pickWinner() {
     return;
   }
   winnerId    = ids[Math.floor(Math.random() * ids.length)];
-  roundState  = "won";
-  winnerStart = performance.now();
+  const winner = touches.get(winnerId);
+  winnerColor  = winner ? winner.color : "#FFF";
+  roundState   = "won";
+  winnerStart  = performance.now();
   playWinSound();
+  spawnConfetti(winner);
 }
 
 // Reset for next round
@@ -112,6 +139,7 @@ function resetRound() {
   winnerId    = null;
   roundState  = "idle";
   winnerStart = 0;
+  confetti    = [];
   countdownEl.style.display = "none";
   replayBtn.style.display   = "none";
   hint.style.display        = "block";
@@ -124,7 +152,8 @@ canvas.addEventListener("touchstart", e => {
   initAudio();
   e.preventDefault();
   for (let t of e.changedTouches) {
-    touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+    const color = COLORS[nextColor++ % COLORS.length];
+    touches.set(t.identifier, { x: t.clientX, y: t.clientY, color });
     playBlip();
   }
   if (!countdownTimer) startCountdown();
@@ -135,7 +164,8 @@ canvas.addEventListener("touchmove", e => {
   e.preventDefault();
   for (let t of e.changedTouches) {
     if (touches.has(t.identifier)) {
-      touches.set(t.identifier, { x: t.clientX, y: t.clientY });
+      const data = touches.get(t.identifier);
+      touches.set(t.identifier, { x: t.clientX, y: t.clientY, color: data.color });
     }
   }
 }, { passive: false });
@@ -150,12 +180,31 @@ replayBtn.addEventListener("click", resetRound);
 function render(ts) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw all finger blobs
-  for (let [id, pos] of touches) {
+  // Draw all finger blobs with glow and pulse
+  for (let [, pos] of touches) {
+    const pulse = 5 * Math.sin(ts / 200);
     ctx.beginPath();
-    ctx.arc(pos.x, pos.y, 50, 0, 2 * Math.PI);
-    ctx.fillStyle = "#FFF";
+    ctx.arc(pos.x, pos.y, 50 + pulse, 0, 2 * Math.PI);
+    ctx.fillStyle = pos.color;
+    ctx.shadowColor = pos.color;
+    ctx.shadowBlur  = 20;
     ctx.fill();
+    ctx.shadowBlur  = 0;
+    ctx.lineWidth   = 4;
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.stroke();
+  }
+
+  // Confetti celebration
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const p = confetti[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.15;
+    p.life++;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, 6, 6);
+    if (p.life > 60) confetti.splice(i,1);
   }
 
   // Winner wipe
@@ -169,10 +218,12 @@ function render(ts) {
 
     ctx.beginPath();
     ctx.arc(pos.x, pos.y, r, 0, 2 * Math.PI);
-    ctx.fillStyle = "rgba(255,255,255,0.4)";
+    ctx.globalAlpha = t;
+    ctx.fillStyle   = winnerColor;
     ctx.fill();
+    ctx.globalAlpha = 1;
 
-    if (t >= 1) resetRound();
+    if (elapsed > WIPE_DURATION + 1000 && confetti.length === 0) resetRound();
   }
 
   requestAnimationFrame(render);
