@@ -4,6 +4,8 @@ const OFFLINE_URLS = [
   'index.html',
   'style.css',
   'app.js',
+  'app.js?v=color-rings-v7',
+  'sw.js?v=color-rings-v7',
   'manifest.json',
   'icons/icon-180.png',
   'icons/icon-192.png',
