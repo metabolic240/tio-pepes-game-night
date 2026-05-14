@@ -100,7 +100,6 @@ body {
 }
 
 #status,
-#versionBadge,
 #hint {
   position: fixed;
   left: 50%;
@@ -123,16 +122,6 @@ body {
   font-size: 0.9rem;
   font-weight: 800;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-#versionBadge {
-  top: calc(62px + env(safe-area-inset-top));
-  padding: 0.35rem 0.7rem;
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 

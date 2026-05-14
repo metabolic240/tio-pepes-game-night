@@ -8,7 +8,6 @@ const countdownEl = document.getElementById("countdown");
 const replayBtn = document.getElementById("replayBtn");
 const hint = document.getElementById("hint");
 const statusEl = document.getElementById("status");
-const versionBadge = document.getElementById("versionBadge");
 
 // State
 const touches = new Map(); // pointerId → { x, y, color, joinedAt }
@@ -23,10 +22,6 @@ const COUNTDOWN_SECONDS = 3;
 const WASH_DURATION = 1200;
 const WINNER_HOLD_DURATION = 2600;
 const FINGER_RADIUS = 48;
-const RING_COUNT = 4;
-const RING_INTERVAL = 760;
-const RING_SPREAD = 118;
-const APP_VERSION = "Color rings v4";
 const COLORS = [
   "#ff4d6d",
   "#ffd166",
@@ -90,7 +85,6 @@ function hideSplash() {
 
 function updateStatus(message) {
   statusEl.textContent = message;
-  versionBadge.textContent = APP_VERSION;
 }
 
 function colorForNextFinger() {
@@ -145,8 +139,9 @@ function pickWinner() {
   winnerId = ids[Math.floor(Math.random() * ids.length)];
   roundState = "won";
   winnerStart = performance.now();
+  const winner = touches.get(winnerId);
   hint.textContent = "Winner!";
-  updateStatus("Winner selected!");
+  updateStatus(`${winner.color} wins`);
   replayBtn.style.display = "block";
   playWinSound();
 }
@@ -214,68 +209,26 @@ canvas.addEventListener("pointerleave", e => {
 replayBtn.addEventListener("click", resetRound);
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    window.location.reload();
-  });
-
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=color-rings-v4").then(registration => {
-      registration.update();
-    }).catch(() => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
       // The game still works without offline support.
     });
   });
 }
 
-function hexToRgb(hex) {
-  const normalized = hex.replace("#", "");
-  const value = parseInt(normalized, 16);
-  return {
-    r: (value >> 16) & 255,
-    g: (value >> 8) & 255,
-    b: value & 255
-  };
-}
-
-function drawRadiatingRings(pos, ts, isWinner = false) {
-  const age = Math.max(0, ts - pos.joinedAt);
-  const { r, g, b } = hexToRgb(pos.color);
-
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.shadowColor = pos.color;
-  ctx.shadowBlur = isWinner ? 28 : 16;
-
-  for (let i = 0; i < RING_COUNT; i++) {
-    const progress = ((age / RING_INTERVAL) + (i / RING_COUNT)) % 1;
-    const radius = FINGER_RADIUS + 12 + progress * RING_SPREAD;
-    const alpha = (1 - progress) * (isWinner ? 0.72 : 0.48);
-
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    ctx.lineWidth = (isWinner ? 7 : 5) * (1 - progress * 0.5);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-}
-
-function drawTouch(pos, ts, isWinner = false) {
-  drawRadiatingRings(pos, ts, isWinner);
-
+function drawTouch(pos, isWinner = false) {
   ctx.save();
   ctx.shadowColor = pos.color;
-  ctx.shadowBlur = isWinner ? 40 : 24;
+  ctx.shadowBlur = isWinner ? 36 : 20;
 
-  const pulse = 1 + Math.sin(ts / 180 + pos.joinedAt) * 0.04;
+  const pulse = 1 + Math.sin(performance.now() / 180 + pos.joinedAt) * 0.04;
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, FINGER_RADIUS * pulse, 0, 2 * Math.PI);
   ctx.fillStyle = pos.color;
   ctx.fill();
 
   ctx.lineWidth = isWinner ? 8 : 5;
-  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
   ctx.stroke();
   ctx.restore();
 }
@@ -284,7 +237,7 @@ function render(ts) {
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
   for (const [id, pos] of touches) {
-    drawTouch(pos, ts, roundState === "won" && id === winnerId);
+    drawTouch(pos, roundState === "won" && id === winnerId);
   }
 
   if (roundState === "won" && winnerId !== null) {
@@ -304,7 +257,7 @@ function render(ts) {
     ctx.fill();
     ctx.restore();
 
-    if (winner) drawTouch(winner, ts, true);
+    if (winner) drawTouch(winner, true);
     if (elapsed >= WASH_DURATION + WINNER_HOLD_DURATION) resetRound();
   }
 
