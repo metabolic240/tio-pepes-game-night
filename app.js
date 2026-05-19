@@ -24,8 +24,8 @@ const WASH_DURATION = 1200;
 const WINNER_HOLD_DURATION = 2600;
 const FINGER_RADIUS = 48;
 const RING_COUNT = 6;
-const RING_INTERVAL = 460;
-const RING_SPREAD = 220;
+const RING_INTERVAL = 100;
+const RING_SPREAD = 50;
 const APP_VERSION = "Color rings v10";
 const COLORS = [
   "#ff4d6d",
