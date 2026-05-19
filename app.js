@@ -8,7 +8,6 @@ const countdownEl = document.getElementById("countdown");
 const replayBtn = document.getElementById("replayBtn");
 const hint = document.getElementById("hint");
 const statusEl = document.getElementById("status");
-const versionBadge = document.getElementById("versionBadge");
 
 // State
 const touches = new Map(); // pointerId → { x, y, color, joinedAt }
@@ -23,10 +22,6 @@ const COUNTDOWN_SECONDS = 3;
 const WASH_DURATION = 1200;
 const WINNER_HOLD_DURATION = 2600;
 const FINGER_RADIUS = 48;
-const RING_COUNT = 6;
-const RING_INTERVAL = 460;
-const RING_SPREAD = 220;
-const APP_VERSION = "Color rings v10";
 const COLORS = [
   "#ff4d6d",
   "#ffd166",
@@ -90,7 +85,6 @@ function hideSplash() {
 
 function updateStatus(message) {
   statusEl.textContent = message;
-  versionBadge.textContent = APP_VERSION;
 }
 
 function colorForNextFinger() {
@@ -145,8 +139,9 @@ function pickWinner() {
   winnerId = ids[Math.floor(Math.random() * ids.length)];
   roundState = "won";
   winnerStart = performance.now();
+  const winner = touches.get(winnerId);
   hint.textContent = "Winner!";
-  updateStatus("Winner selected!");
+  updateStatus(`${winner.color} wins`);
   replayBtn.style.display = "block";
   playWinSound();
 }
@@ -213,102 +208,27 @@ canvas.addEventListener("pointerleave", e => {
 
 replayBtn.addEventListener("click", resetRound);
 
-
-// Prevent iOS text loupe / zoom gestures while fingers are held on the game area.
-function preventNativeGesture(e) {
-  e.preventDefault();
-}
-
-document.addEventListener("gesturestart", preventNativeGesture, { passive: false });
-document.addEventListener("gesturechange", preventNativeGesture, { passive: false });
-document.addEventListener("gestureend", preventNativeGesture, { passive: false });
-document.addEventListener("touchstart", preventNativeGesture, { passive: false });
-document.addEventListener("touchmove", preventNativeGesture, { passive: false });
-canvas.addEventListener("contextmenu", preventNativeGesture);
-canvas.addEventListener("dblclick", preventNativeGesture);
-
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    window.location.reload();
-  });
-
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=color-rings-v10").then(registration => {
-      registration.update();
-    }).catch(() => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
       // The game still works without offline support.
     });
   });
 }
 
-function hexToRgb(hex) {
-  const normalized = hex.replace("#", "");
-  const value = parseInt(normalized, 16);
-  return {
-    r: (value >> 16) & 255,
-    g: (value >> 8) & 255,
-    b: value & 255
-  };
-}
-
-function drawRadiatingRings(pos, ts, isWinner = false) {
-  const age = Math.max(0, ts - pos.joinedAt);
-  const { r, g, b } = hexToRgb(pos.color);
-  const spin = age / 520 + (pos.joinedAt % 360) * (Math.PI / 180);
-
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.shadowColor = pos.color;
-  ctx.shadowBlur = isWinner ? 36 : 24;
-  ctx.globalCompositeOperation = "lighter";
-
-  for (let i = 0; i < RING_COUNT; i++) {
-    const progress = ((age / RING_INTERVAL) + (i / RING_COUNT)) % 1;
-    const radius = FINGER_RADIUS + 14 + progress * RING_SPREAD;
-    const edgeAlpha = (1 - progress) * (isWinner ? 0.95 : 0.82);
-    const ringWidth = (isWinner ? 11 : 8) * (1 - progress * 0.4);
-
-    // Main traveling wave ring
-    ctx.beginPath();
-    ctx.arc(pos.x, pos.y, radius, 0, 2 * Math.PI);
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${edgeAlpha})`;
-    ctx.lineWidth = ringWidth;
-    ctx.stroke();
-
-    // Dynamic swirl segments to make the outward motion obvious and lively
-    const segmentArc = (isWinner ? 0.34 : 0.26) * Math.PI;
-    const segmentGap = (isWinner ? 0.72 : 0.9) * Math.PI;
-    const start = spin + i * 0.92;
-    ctx.lineWidth = ringWidth * 0.72;
-    ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${edgeAlpha * 0.9})`;
-
-    for (let seg = 0; seg < 2; seg++) {
-      const a0 = start + seg * segmentGap;
-      const a1 = a0 + segmentArc;
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius + (seg * 6 - 3), a0, a1);
-      ctx.stroke();
-    }
-  }
-
-  ctx.restore();
-}
-
-function drawTouch(pos, ts, isWinner = false) {
-  drawRadiatingRings(pos, ts, isWinner);
-
+function drawTouch(pos, isWinner = false) {
   ctx.save();
   ctx.shadowColor = pos.color;
-  ctx.shadowBlur = isWinner ? 40 : 24;
+  ctx.shadowBlur = isWinner ? 36 : 20;
 
-  const pulse = 1 + Math.sin(ts / 180 + pos.joinedAt) * 0.04;
+  const pulse = 1 + Math.sin(performance.now() / 180 + pos.joinedAt) * 0.04;
   ctx.beginPath();
   ctx.arc(pos.x, pos.y, FINGER_RADIUS * pulse, 0, 2 * Math.PI);
   ctx.fillStyle = pos.color;
   ctx.fill();
 
   ctx.lineWidth = isWinner ? 8 : 5;
-  ctx.strokeStyle = "rgba(255,255,255,0.92)";
+  ctx.strokeStyle = "rgba(255,255,255,0.9)";
   ctx.stroke();
   ctx.restore();
 }
@@ -317,7 +237,7 @@ function render(ts) {
   ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
 
   for (const [id, pos] of touches) {
-    drawTouch(pos, ts, roundState === "won" && id === winnerId);
+    drawTouch(pos, roundState === "won" && id === winnerId);
   }
 
   if (roundState === "won" && winnerId !== null) {
@@ -337,7 +257,7 @@ function render(ts) {
     ctx.fill();
     ctx.restore();
 
-    if (winner) drawTouch(winner, ts, true);
+    if (winner) drawTouch(winner, true);
     if (elapsed >= WASH_DURATION + WINNER_HOLD_DURATION) resetRound();
   }
 
