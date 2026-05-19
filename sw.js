@@ -1,11 +1,11 @@
-const CACHE_NAME = 'game-night-color-rings-v8';
+const CACHE_NAME = 'game-night-v2';
 const OFFLINE_URLS = [
   './',
   'index.html',
   'style.css',
   'app.js',
-  'app.js?v=color-rings-v8',
-  'sw.js?v=color-rings-v8',
+  'app.js?v=color-rings-v7',
+  'sw.js?v=color-rings-v7',
   'manifest.json',
   'icons/icon-180.png',
   'icons/icon-192.png',
@@ -62,5 +62,19 @@ async function cacheFirst(request) {
 
 self.addEventListener('fetch', evt => {
   if (evt.request.method !== 'GET') return;
-  evt.respondWith(isAppShellRequest(evt.request) ? networkFirst(evt.request) : cacheFirst(evt.request));
+
+  evt.respondWith(
+    caches.match(evt.request).then(cached => {
+      const networked = fetch(evt.request)
+        .then(response => {
+          if (response.ok) {
+            caches.open(CACHE_NAME).then(cache => cache.put(evt.request, response.clone()));
+          }
+          return response;
+        })
+        .catch(() => cached);
+
+      return cached || networked;
+    })
+  );
 });
